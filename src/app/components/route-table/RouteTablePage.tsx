@@ -222,11 +222,11 @@ export function RouteTablePage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by destination, label, or nexthop…"
-                className="pl-8 bg-white"
+                className="pl-8 bg-white border border-gray-300"
               />
             </div>
             <Select value={filter} onValueChange={(v) => setFilter(v as FilterType)}>
-              <SelectTrigger className="w-[180px] bg-white"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-[180px] bg-white border border-gray-300"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All</SelectItem>
                 <SelectItem value="interface_id">Interface</SelectItem>

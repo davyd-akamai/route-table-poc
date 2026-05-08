@@ -1,0 +1,14 @@
+button,
+[role="button"],
+select,
+label[for],
+input[type="checkbox"],
+input[type="radio"],
+switch,
+[data-radix-collection-item],
+[role="switch"],
+[role="tab"],
+[role="menuitem"],
+[role="option"] {
+  cursor: pointer;
+}
