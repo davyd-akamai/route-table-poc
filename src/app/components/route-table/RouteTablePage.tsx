@@ -102,6 +102,10 @@ export function RouteTablePage() {
           (r.nexthop ?? "").toLowerCase().includes(q),
       );
     }
+    list.sort((a, b) => {
+      if (a.is_editable === b.is_editable) return 0;
+      return a.is_editable ? 1 : -1;
+    });
     return list;
   }, [routes, filter, debouncedSearch]);
 
