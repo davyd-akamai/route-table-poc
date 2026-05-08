@@ -74,4 +74,23 @@ export const api = {
     req(`/routes/${id}`, { method: "PUT", body: JSON.stringify(payload) }).then((r) => r.route as Route),
   deleteRoute: (id: string) => req(`/routes/${id}`, { method: "DELETE" }),
   reseed: () => req("/reseed", { method: "POST" }),
+  resetDemoData: async (): Promise<boolean> => {
+    const seedRoutes = [
+      { label: 'SM-001', destination: '0.0.0.0/0', nexthop_type: 'platform', nexthop: 'internet-gateway', mode: 'static', status: 'active', is_editable: false },
+      { label: 'SM-002', destination: '::/0', nexthop_type: 'platform', nexthop: 'internet-gateway', mode: 'static', status: 'active', is_editable: false },
+      { label: 'SM-003', destination: '10.0.0.0/16', nexthop_type: 'platform', nexthop: 'local', mode: 'static', status: 'active', is_editable: false },
+      { label: 'rt-web', destination: '10.2.0.0/24', nexthop_type: 'interface_id', nexthop: 'interface-abc123', mode: 'static', status: 'active', is_editable: true },
+      { label: 'rt-app', destination: '10.3.0.0/24', nexthop_type: 'interface_id', nexthop: 'interface-abc123', mode: 'static', status: 'active', is_editable: true },
+      { label: 'rt-drop', destination: '172.16.8.0/22', nexthop_type: 'blackhole', nexthop: null, mode: 'static', status: 'active', is_editable: true },
+      { label: 'rt-bgp', destination: '10.99.0.0/16', nexthop_type: 'interface_id', nexthop: '198.51.100.1', mode: 'bgp', status: 'active', is_editable: false },
+      { label: 'rt-blk', destination: '10.5.0.0/24', nexthop_type: 'blackhole', nexthop: null, mode: null, status: 'blackhole', is_editable: false },
+    ];
+    try {
+      await req("/reset-demo", { method: "POST", body: JSON.stringify({ routes: seedRoutes }) });
+      return true;
+    } catch (e) {
+      console.log("resetDemoData failed:", e);
+      return false;
+    }
+  },
 };

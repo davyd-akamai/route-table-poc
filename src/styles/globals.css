@@ -4,11 +4,22 @@ select,
 label[for],
 input[type="checkbox"],
 input[type="radio"],
-switch,
 [data-radix-collection-item],
 [role="switch"],
 [role="tab"],
 [role="menuitem"],
 [role="option"] {
-  cursor: pointer;
+  cursor: pointer !important;
+}
+
+@layer base {
+  button, [role="button"], select {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .cursor-pointer {
+    cursor: pointer !important;
+  }
 }

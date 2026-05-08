@@ -37,6 +37,8 @@ export function RouteTablePage() {
   const [drawerMode, setDrawerMode] = useState<"add" | "edit">("add");
   const [drawerInitial, setDrawerInitial] = useState<Route | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Route | null>(null);
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -144,8 +146,59 @@ export function RouteTablePage() {
     }
   };
 
+  const confirmReset = async () => {
+    setResetDialogOpen(false);
+    setResetting(true);
+    const ok = await api.resetDemoData();
+    setResetting(false);
+    if (ok) {
+      await load();
+      toast.success("Demo data has been reset.");
+    } else {
+      toast.error("Reset failed. Please try again.");
+    }
+  };
+
   return (
     <TooltipProvider delayDuration={150}>
+      {/* Demo banner */}
+      <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 px-[35px] py-[8px]">
+        <span className="flex-1 text-center text-slate-500" style={{ fontSize: 12 }}>
+          🧪 Demo prototype · Any changes you make are shared with all viewers
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={resetting}
+          onClick={() => setResetDialogOpen(true)}
+          className="ml-4 text-slate-600 border-slate-300 bg-white hover:bg-slate-50"
+          style={{ fontSize: 12 }}
+        >
+          {resetting ? "Resetting…" : "Reset demo data"}
+        </Button>
+      </div>
+
+      {/* Reset confirmation dialog */}
+      <AlertDialog open={resetDialogOpen} onOpenChange={setResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset demo data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all changes and restore the original 8 routes. This affects all viewers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmReset}
+              className="bg-red-600 text-white hover:bg-red-700"
+            >
+              Reset
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <div className="mx-auto max-w-[1280px] px-[35px] py-[25px] flex flex-col gap-[20px]">
         {/* Header */}
         <div className="flex flex-col gap-[5px]">
