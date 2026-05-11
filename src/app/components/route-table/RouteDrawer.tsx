@@ -16,12 +16,12 @@ type Props = {
   initial?: Route | null;
   nexthopOptions: NexthopOption[];
   blackholeCount: number;
-  ifGwCount: number;
+  allRoutes: Route[];
   onClose: () => void;
   onSubmit: (payload: { label: string; destination: string; nexthop_type: string; nexthop: string | null }) => Promise<void>;
 };
 
-export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCount, ifGwCount, onClose, onSubmit }: Props) {
+export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCount, allRoutes, onClose, onSubmit }: Props) {
   const [label, setLabel] = useState("");
   const [destination, setDestination] = useState("");
   const [nexthopType, setNexthopType] = useState<"interface_id" | "gateway_id" | "blackhole">("interface_id");
@@ -42,16 +42,42 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   const labelError = label ? validateLabel(label) : null;
   const destinationError = mode === "add" && destination ? validateDestination(destination) : null;
 
+  const labelUniqueError = useMemo(() => {
+    if (!label) return null;
+    const duplicate = allRoutes.find(
+      (r) =>
+        r.label.toLowerCase() === label.toLowerCase() &&
+        (mode === "add" || r.id !== initial?.id)
+    );
+    return duplicate
+      ? `Label "${label}" is already in use. Choose a unique label.`
+      : null;
+  }, [label, allRoutes, mode, initial]);
+
   const filteredOptions = useMemo(
     () => nexthopOptions.filter((o) => o.type === nexthopType),
     [nexthopOptions, nexthopType],
   );
 
   const blackholeLimitHit = nexthopType === "blackhole" && blackholeCount >= 25 && mode === "add";
-  const ifGwLimitHit = (nexthopType === "interface_id" || nexthopType === "gateway_id") && ifGwCount >= 10 && mode === "add";
+
+  const selectedNexthopCount = useMemo(() => {
+    if (!nexthop || nexthopType === "blackhole") return 0;
+    return allRoutes.filter(
+      (r) => r.nexthop === nexthop && r.is_editable
+    ).length;
+  }, [nexthop, nexthopType, allRoutes]);
+
+  const ifGwLimitHit =
+    mode === "add" &&
+    (nexthopType === "interface_id" ||
+      nexthopType === "gateway_id") &&
+    !!nexthop &&
+    selectedNexthopCount >= 10;
 
   const formValid =
     !validateLabel(label) &&
+    !labelUniqueError &&
     (mode === "edit" || !validateDestination(destination)) &&
     (nexthopType === "blackhole" || !!nexthop) &&
     !blackholeLimitHit &&
@@ -99,7 +125,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
           <Field
             label="Label"
             helper="1–64 characters. Letters, numbers, and hyphens only. No consecutive dashes (e.g. rt-web-01)."
-            error={labelError}
+            error={labelUniqueError ?? labelError}
           >
             <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="rt-web-01" />
           </Field>
@@ -124,13 +150,13 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
               <NexthopCard
                 selected={nexthopType === "interface_id"}
                 onSelect={() => setNexthopType("interface_id")}
-                title="Interface ID"
+                title="Linode Interface"
                 description="Route traffic to a Linode network interface"
               />
               <NexthopCard
                 selected={nexthopType === "gateway_id"}
                 onSelect={() => setNexthopType("gateway_id")}
-                title="Gateway ID"
+                title="Gateway"
                 description="Route traffic through a gateway resource"
               />
               <NexthopCard
@@ -168,7 +194,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
               {blackholeLimitHit
                 ? "Blackhole route limit reached (25 of 25 used). Delete an existing blackhole route to add a new one."
                 : ifGwLimitHit
-                ? "Interface and gateway route limit reached for one or more Linode interfaces. Review existing routes before adding new ones."
+                ? `Route limit reached for ${nexthop}. This interface or gateway already has 10 routes assigned. Select a different nexthop or delete an existing route.`
                 : submitError}
             </div>
           )}

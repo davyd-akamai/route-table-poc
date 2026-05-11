@@ -313,7 +313,7 @@ export function RouteTablePage() {
                 <Th>Label</Th>
                 <Th>Destination</Th>
                 <Th>Nexthop Type</Th>
-                <Th>Mode</Th>
+                {/* <Th>Mode</Th> */}
                 <Th>Next Hop</Th>
                 <Th className="text-right pr-[20px]">Actions</Th>
               </tr>
@@ -359,7 +359,7 @@ export function RouteTablePage() {
                               <Lock className="size-3" /> Platform
                             </Badge>
                           </td>
-                          <td className="py-[12px] text-slate-400">—</td>
+                          {/* <td className="py-[12px] text-slate-400">—</td> */}
                           <td className="py-[12px] text-slate-500">local (VPC)</td>
                           <td className="py-[12px] pr-[20px] text-right">
                             <LockedActions kind="platform" />
@@ -394,7 +394,7 @@ export function RouteTablePage() {
         initial={drawerInitial}
         nexthopOptions={nexthops}
         blackholeCount={blackholeCount}
-        ifGwCount={ifGwCount}
+        allRoutes={routes}
         onClose={() => setDrawerOpen(false)}
         onSubmit={handleSubmit}
       />
@@ -488,7 +488,7 @@ function RouteRow({ route, isEcmp, onEdit, onDelete }: { route: Route; isEcmp: b
           )}
         </div>
       </td>
-      <td className="px-[15px] py-[12px]"><ModeBadge mode={route.mode} /></td>
+      {/* <td className="px-[15px] py-[12px]"><ModeBadge mode={route.mode} /></td> */}
       <td className="px-[15px] py-[12px]"><NexthopCell route={route} /></td>
       <td className="px-[15px] py-[12px] pr-[20px] text-right">
         {readOnly ? (

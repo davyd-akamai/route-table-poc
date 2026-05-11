@@ -134,13 +134,15 @@ app.post("/make-server-22ead257/routes", async (c) => {
 
     const all = await kv.getByPrefix(ROUTE_PREFIX);
     const blackholeCount = all.filter((r: any) => r.nexthop_type === "blackhole" && r.is_editable).length;
-    const ifGwCount = all.filter((r: any) => ["interface_id", "gateway_id"].includes(r.nexthop_type) && r.is_editable).length;
+    const nexthopCount = nexthop
+      ? all.filter((r: any) => r.nexthop === nexthop && r.is_editable).length
+      : 0;
 
     if (nexthop_type === "blackhole" && blackholeCount >= 25) {
       return c.json({ error: "Blackhole route limit reached (25 of 25 used). Delete an existing blackhole route to add a new one." }, 400);
     }
-    if (["interface_id", "gateway_id"].includes(nexthop_type) && ifGwCount >= 10) {
-      return c.json({ error: "Interface and gateway route limit reached for one or more Linode interfaces. Review existing routes before adding new ones." }, 400);
+    if (["interface_id", "gateway_id"].includes(nexthop_type) && nexthopCount >= 10) {
+      return c.json({ error: `Route limit reached for ${nexthop}. This interface or gateway already has 10 routes assigned. Select a different nexthop or delete an existing route.` }, 400);
     }
 
     const conflict = all.find(
@@ -151,6 +153,13 @@ app.post("/make-server-22ead257/routes", async (c) => {
     );
     if (conflict) {
       return c.json({ error: "A route with this destination and nexthop combination already exists." }, 409);
+    }
+
+    const labelConflict = all.find(
+      (r: any) => r.label?.toLowerCase() === label?.toLowerCase()
+    );
+    if (labelConflict) {
+      return c.json({ error: `Label "${label}" is already in use. Choose a unique label.` }, 409);
     }
 
     const id = `r-${Math.random().toString(36).slice(2, 10)}`;
@@ -182,6 +191,16 @@ app.put("/make-server-22ead257/routes/:id", async (c) => {
     const existing = await kv.get(`${ROUTE_PREFIX}${id}`);
     if (!existing) return c.json({ error: "Route not found" }, 404);
     if (!existing.is_editable) return c.json({ error: "Route is not editable" }, 403);
+
+    const all = await kv.getByPrefix(ROUTE_PREFIX);
+    const labelConflict = all.find(
+      (r: any) =>
+        r.label?.toLowerCase() === (body.label ?? existing.label)?.toLowerCase() &&
+        r.id !== id
+    );
+    if (labelConflict) {
+      return c.json({ error: `Label "${body.label}" is already in use. Choose a unique label.` }, 409);
+    }
 
     const updated = {
       ...existing,

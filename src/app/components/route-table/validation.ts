@@ -30,6 +30,17 @@ function isSubPrefixOfVpc(cidr: string): boolean {
   return (a & mask) === (b & mask);
 }
 
+function isSupernetOfVpc(cidr: string): boolean {
+  const [ip, lenStr] = cidr.split("/");
+  const len = Number(lenStr);
+  const a = ipv4ToInt(ip);
+  const vpcBase = ipv4ToInt("10.0.0.0");
+  if (a == null || vpcBase == null || isNaN(len)) return false;
+  if (len >= 16) return false;
+  const mask = len === 0 ? 0 : (~0 << (32 - len)) >>> 0;
+  return (vpcBase & mask) === (a & mask);
+}
+
 export function validateDestination(dest: string): string | null {
   if (!dest) return "Destination is required.";
   const v4 = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
@@ -39,7 +50,8 @@ export function validateDestination(dest: string): string | null {
     const len = Number(lenStr);
     if (len < 0 || len > 32) return "Invalid IPv4 prefix length.";
     if (ipv4ToInt(ip) == null) return "Invalid IPv4 address.";
-    if (dest === VPC_PREFIX || isSubPrefixOfVpc(dest))
+    if (dest === VPC_PREFIX || isSubPrefixOfVpc(dest) ||
+        isSupernetOfVpc(dest))
       return "This destination overlaps with the VPC address space and cannot be used as a custom route.";
     return null;
   }
