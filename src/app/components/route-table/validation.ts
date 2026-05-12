@@ -1,3 +1,5 @@
+import { Route } from "./api";
+
 export const LABEL_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
 
 export function validateLabel(label: string): string | null {
@@ -61,4 +63,118 @@ export function validateDestination(dest: string): string | null {
     return null;
   }
   return "Enter a valid IPv4 or IPv6 CIDR (e.g. 10.2.0.0/24).";
+}
+
+// ---------------------------------------------------------------------------
+// Conflict detection
+// ---------------------------------------------------------------------------
+
+function parseCidr4(cidr: string): { base: number; len: number } | null {
+  const parts = cidr.split("/");
+  if (parts.length !== 2) return null;
+  const len = Number(parts[1]);
+  if (isNaN(len) || len < 0 || len > 32) return null;
+  const base = ipv4ToInt(parts[0]);
+  if (base === null) return null;
+  const mask = len === 0 ? 0 : (~0 << (32 - len)) >>> 0;
+  return { base: (base & mask) >>> 0, len };
+}
+
+function contains4(
+  outer: { base: number; len: number },
+  inner: { base: number; len: number },
+): boolean {
+  if (outer.len > inner.len) return false;
+  const mask = outer.len === 0 ? 0 : (~0 << (32 - outer.len)) >>> 0;
+  return ((inner.base & mask) >>> 0) === outer.base;
+}
+
+function endOf4(c: { base: number; len: number }): number {
+  const hostBits = 32 - c.len;
+  const hostMask = c.len === 32 ? 0 : (~0 >>> c.len) >>> 0;
+  return (c.base | hostMask) >>> 0;
+}
+
+/**
+ * Detects conflicts between editable, non-BGP routes and returns a map of
+ * route id → human-readable conflict description for the tooltip.
+ */
+export function detectConflicts(routes: Route[]): Map<string, string> {
+  const result = new Map<string, string>();
+
+  const candidates = routes.filter((r) => r.is_editable && r.mode !== "bgp");
+
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i];
+      const b = candidates[j];
+
+      // Skip ECMP pairs (same destination, same nexthop_type — intentional)
+      if (a.destination === b.destination && a.nexthop_type === b.nexthop_type) continue;
+
+      const ca = parseCidr4(a.destination);
+      const cb = parseCidr4(b.destination);
+      if (!ca || !cb) continue; // Skip IPv6 or invalid CIDRs
+
+      const aContainsB = contains4(ca, cb);
+      const bContainsA = contains4(cb, ca);
+      const doOverlap =
+        aContainsB || bContainsA || (ca.base <= endOf4(cb) && cb.base <= endOf4(ca));
+
+      if (!doOverlap) continue;
+
+      const aIsBlackhole = a.nexthop_type === "blackhole";
+      const bIsBlackhole = b.nexthop_type === "blackhole";
+      const aIsGateway =
+        a.nexthop_type === "interface_id" || a.nexthop_type === "gateway_id";
+      const bIsGateway =
+        b.nexthop_type === "interface_id" || b.nexthop_type === "gateway_id";
+
+      // Type 3 — Blackhole overlapping with a gateway/interface route
+      if (aIsBlackhole && bIsGateway && !result.has(a.id)) {
+        result.set(
+          a.id,
+          `This blackhole route overlaps with an active gateway route (${b.label} · ${b.destination}). Traffic matching this destination may be silently dropped instead of reaching the intended gateway. Verify route priority is correct.`,
+        );
+      }
+      if (bIsBlackhole && aIsGateway && !result.has(b.id)) {
+        result.set(
+          b.id,
+          `This blackhole route overlaps with an active gateway route (${a.label} · ${a.destination}). Traffic matching this destination may be silently dropped instead of reaching the intended gateway. Verify route priority is correct.`,
+        );
+      }
+
+      // Type 1 — Broader route shadowed by more specific
+      if (aContainsB && !bContainsA && !result.has(a.id)) {
+        result.set(
+          a.id,
+          `This route is shadowed by a more specific route (${b.label} · ${b.destination}). Traffic matching both destinations will always use the more specific route. This route will only be used for destinations not covered by ${b.destination}.`,
+        );
+      }
+      if (bContainsA && !aContainsB && !result.has(b.id)) {
+        result.set(
+          b.id,
+          `This route is shadowed by a more specific route (${a.label} · ${a.destination}). Traffic matching both destinations will always use the more specific route. This route will only be used for destinations not covered by ${a.destination}.`,
+        );
+      }
+
+      // Type 2 — Overlapping but neither fully contains the other
+      if (!aContainsB && !bContainsA) {
+        if (!result.has(a.id)) {
+          result.set(
+            a.id,
+            `This route's destination overlaps with ${b.label} · ${b.destination}. Depending on the destination IP, traffic may match either route. Verify that both routes are intentional.`,
+          );
+        }
+        if (!result.has(b.id)) {
+          result.set(
+            b.id,
+            `This route's destination overlaps with ${a.label} · ${a.destination}. Depending on the destination IP, traffic may match either route. Verify that both routes are intentional.`,
+          );
+        }
+      }
+    }
+  }
+
+  return result;
 }

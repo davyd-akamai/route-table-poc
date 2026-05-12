@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, DollarSign, Lock, Pencil, Search, Trash2, AlertTriangle, Plus } from "lucide-react";
+import { AlertCircle, DollarSign, Lock, Pencil, Search, Trash2, AlertTriangle, Plus, History, Network } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -10,8 +10,10 @@ import { Switch } from "../ui/switch";
 import { Label } from "../ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
-import { api, Route, NexthopOption } from "./api";
+import { api, Route, NexthopOption, AuditEntry, getMockAudit } from "./api";
 import { RouteDrawer } from "./RouteDrawer";
+import { detectConflicts } from "./validation";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "../ui/sheet";
 
 const MONO = "ui-monospace, SFMono-Regular, Menlo, monospace";
 const LOCAL_HIDDEN_COUNT = 12;
@@ -39,6 +41,11 @@ export function RouteTablePage() {
   const [deleteTarget, setDeleteTarget] = useState<Route | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [conflictMap, setConflictMap] = useState<Map<string, string>>(new Map());
+  const [auditTarget, setAuditTarget] = useState<Route | null>(null);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [simulateEmpty, setSimulateEmpty] = useState(false);
+  const [simulateBlackholeWarning, setSimulateBlackholeWarning] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -60,6 +67,7 @@ export function RouteTablePage() {
       }
       setRoutes(Array.isArray(r) ? r : []);
       setNexthops(Array.isArray(n) ? n : []);
+      setConflictMap(detectConflicts(Array.isArray(r) ? r : []));
       setLoadError(null);
     } catch (e: any) {
       console.log("Load error:", e);
@@ -114,6 +122,10 @@ export function RouteTablePage() {
     routes.forEach((r) => counts.set(r.destination, (counts.get(r.destination) ?? 0) + 1));
     return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([d]) => d));
   }, [routes]);
+
+  const displayFiltered = simulateEmpty ? [] : filtered;
+  const effectiveRoutesLength = simulateEmpty ? 0 : routes.length;
+  const displayBlackholeCount = simulateBlackholeWarning ? 21 : blackholeCount;
 
   const handleAdd = () => {
     setDrawerMode("add");
@@ -258,8 +270,9 @@ export function RouteTablePage() {
           <div className="grid grid-cols-3 gap-[35px]">
             <LimitCounter
               label="Blackhole Routes"
-              value={blackholeCount}
+              value={displayBlackholeCount}
               limit={25}
+              nearLimit={displayBlackholeCount >= 20}
             />
             <Counter label="System Routes" value={systemCount} helper="Platform-managed" />
             <Counter
@@ -319,29 +332,44 @@ export function RouteTablePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {displayFiltered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-[60px]">
-                    <div className="flex flex-col items-center gap-[10px] text-slate-500">
-                      <Search className="size-6 text-slate-400" />
-                      <div style={{ fontSize: 15, fontWeight: 500, color: "#0f172a" }}>No routes found</div>
-                      <div style={{ fontSize: 13 }}>
-                        {debouncedSearch
-                          ? `No routes match '${debouncedSearch}'. Try a different destination.`
-                          : "No routes match the current filter."}
+                    {effectiveRoutesLength === 0 ? (
+                      <div className="flex flex-col items-center gap-[10px]">
+                        <Network className="size-12 text-slate-300" />
+                        <div style={{ fontSize: 17, fontWeight: 500, color: "#0f172a" }}>No routes configured</div>
+                        <div className="text-slate-500 text-center max-w-[400px]" style={{ fontSize: 13 }}>
+                          Add a static route to control how traffic flows within this VPC, or create a blackhole route to drop traffic to specific destinations.
+                        </div>
+                        <Button onClick={handleAdd} className="bg-blue-600 hover:bg-blue-700 text-white mt-[5px]">
+                          <Plus className="size-4 mr-1" /> Add your first route
+                        </Button>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-[10px] text-slate-500">
+                        <Search className="size-6 text-slate-400" />
+                        <div style={{ fontSize: 15, fontWeight: 500, color: "#0f172a" }}>No routes found</div>
+                        <div style={{ fontSize: 13 }}>
+                          {debouncedSearch
+                            ? `No routes match '${debouncedSearch}'. Try a different destination.`
+                            : "No routes match the current filter."}
+                        </div>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
-                filtered.flatMap((r) => {
+                displayFiltered.flatMap((r) => {
                   const rows = [
                     <RouteRow
                       key={r.id}
                       route={r}
                       isEcmp={ecmpDestinations.has(r.destination)}
+                      conflictMap={conflictMap}
                       onEdit={() => handleEdit(r)}
                       onDelete={() => setDeleteTarget(r)}
+                      onAudit={() => { setAuditTarget(r); setAuditEntries(getMockAudit(r)); }}
                     />,
                   ];
                   if (
@@ -383,7 +411,7 @@ export function RouteTablePage() {
         </div>
 
         <div className="text-slate-500" style={{ fontSize: 12 }}>
-          Showing {filtered.length} routes ·{" "}
+          Showing {displayFiltered.length} routes ·{" "}
           {showLocal ? "local routes visible" : "12 platform local routes hidden"}
         </div>
       </div>
@@ -416,6 +444,90 @@ export function RouteTablePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Audit history sheet */}
+      <Sheet open={!!auditTarget} onOpenChange={(v) => !v && setAuditTarget(null)}>
+        <SheetContent className="w-[520px] sm:max-w-[520px] flex flex-col gap-0 p-0">
+          <SheetHeader className="px-[25px] py-[20px] border-b">
+            <SheetTitle style={{ fontSize: 17 }}>Route History</SheetTitle>
+            <SheetDescription>
+              <span style={{ fontFamily: MONO }}>{auditTarget?.label} · {auditTarget?.destination}</span>
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-[25px] py-[20px]">
+            {auditEntries.length === 0 ? (
+              <div className="text-slate-500" style={{ fontSize: 13 }}>
+                No history yet. Changes to this route will appear here.
+              </div>
+            ) : (
+              <table className="w-full" style={{ fontSize: 13 }}>
+                <thead>
+                  <tr className="text-left text-slate-600 border-b border-slate-200" style={{ fontSize: 12 }}>
+                    <th className="pb-[8px] font-medium pr-[15px]">Action</th>
+                    <th className="pb-[8px] font-medium pr-[15px]">Changed by</th>
+                    <th className="pb-[8px] font-medium pr-[15px]">Date</th>
+                    <th className="pb-[8px] font-medium">Changes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditEntries.map((entry) => (
+                    <tr key={entry.id} className="border-b border-slate-100 last:border-b-0">
+                      <td className="py-[10px] pr-[15px]"><ActionBadge action={entry.action} /></td>
+                      <td className="py-[10px] pr-[15px]">{entry.changed_by}</td>
+                      <td className="py-[10px] pr-[15px] whitespace-nowrap">{formatAuditDate(entry.changed_at)}</td>
+                      <td className="py-[10px]" style={{ fontFamily: MONO, fontSize: 12 }}>{entry.changes}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <SheetFooter className="px-[25px] py-[15px] border-t flex-row justify-end">
+            <Button variant="outline" onClick={() => setAuditTarget(null)}>Close</Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Demo controls floating panel */}
+      <div
+        style={{
+          position: "fixed",
+          bottom: 24,
+          right: 24,
+          zIndex: 50,
+          background: "white",
+          border: "1px solid #e2e8f0",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+          borderRadius: 8,
+          padding: "12px 16px",
+          minWidth: 248,
+        }}
+      >
+        <div style={{ fontSize: 11, color: "#94a3b8", fontVariant: "small-caps", fontWeight: 600, marginBottom: 10, letterSpacing: "0.05em" }}>
+          Demo Controls
+        </div>
+        <div className="flex flex-col gap-[12px]">
+          <div className="flex flex-col gap-[6px]">
+            <div className="flex items-center gap-[8px]">
+              <Switch id="simulate-empty" checked={simulateEmpty} onCheckedChange={setSimulateEmpty} />
+              <Label htmlFor="simulate-empty" style={{ fontSize: 13 }}>Simulate empty table</Label>
+            </div>
+            {simulateEmpty && (
+              <div className="text-slate-400" style={{ fontSize: 12, paddingLeft: 36 }}>
+                Hiding all routes to preview the empty state.
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-[8px]">
+            <Switch
+              id="simulate-blackhole-warning"
+              checked={simulateBlackholeWarning}
+              onCheckedChange={setSimulateBlackholeWarning}
+            />
+            <Label htmlFor="simulate-blackhole-warning" style={{ fontSize: 13 }}>Simulate blackhole limit warning</Label>
+          </div>
+        </div>
+      </div>
     </TooltipProvider>
   );
 }
@@ -462,7 +574,7 @@ function Counter({ label, value, helper, warnings }: { label: string; value: num
   );
 }
 
-function LimitCounter({ label, value, limit }: { label: string; value: number; limit: number }) {
+function LimitCounter({ label, value, limit, nearLimit }: { label: string; value: number; limit: number; nearLimit?: boolean }) {
   return (
     <div className="flex flex-col gap-[5px]">
       <div className="text-slate-600" style={{ fontSize: 12 }}>{label}</div>
@@ -470,15 +582,48 @@ function LimitCounter({ label, value, limit }: { label: string; value: number; l
         <span style={{ fontSize: 22, fontWeight: 500 }}>{value}</span>
         <span className="text-slate-400" style={{ fontSize: 13 }}>/ {limit}</span>
       </div>
+      {nearLimit && (
+        <div className="flex items-start gap-[4px] text-amber-600 mt-[2px]" style={{ fontSize: 12 }}>
+          <AlertTriangle className="size-3.5 shrink-0 mt-[1px]" />
+          <span>Approaching limit. Blackhole routes are used to drop traffic to specific destinations. Consider removing unused blackhole routes before reaching the limit of 25.</span>
+        </div>
+      )}
     </div>
   );
 }
 
-function RouteRow({ route, isEcmp, onEdit, onDelete }: { route: Route; isEcmp: boolean; onEdit: () => void; onDelete: () => void }) {
+function RouteRow({
+  route,
+  isEcmp,
+  conflictMap,
+  onEdit,
+  onDelete,
+  onAudit,
+}: {
+  route: Route;
+  isEcmp: boolean;
+  conflictMap: Map<string, string>;
+  onEdit: () => void;
+  onDelete: () => void;
+  onAudit: () => void;
+}) {
   const readOnly = !route.is_editable;
+  const conflict = conflictMap.get(route.id);
   return (
     <tr className={`border-b border-slate-100 last:border-b-0 ${readOnly ? "bg-slate-100/70" : ""}`}>
-      <td className="px-[15px] py-[12px]" style={{ fontFamily: MONO }}>{route.label}</td>
+      <td className="px-[15px] py-[12px]" style={{ fontFamily: MONO }}>
+        <span className="inline-flex items-center gap-1">
+          {route.label}
+          {conflict && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-[300px]">{conflict}</TooltipContent>
+            </Tooltip>
+          )}
+        </span>
+      </td>
       <td className="px-[15px] py-[12px]" style={{ fontFamily: MONO }}>{route.destination}</td>
       <td className="px-[15px] py-[12px]">
         <div className="flex items-center gap-[6px]">
@@ -495,6 +640,7 @@ function RouteRow({ route, isEcmp, onEdit, onDelete }: { route: Route; isEcmp: b
           <LockedActions kind={route.mode === "bgp" ? "bgp" : "platform"} />
         ) : (
           <div className="inline-flex items-center gap-[5px]">
+            <button onClick={onAudit} className="rounded p-1 text-slate-600 hover:bg-slate-100" aria-label="History"><History className="size-4" /></button>
             <button onClick={onEdit} className="rounded p-1 text-slate-600 hover:bg-slate-100" aria-label="Edit"><Pencil className="size-4" /></button>
             <button onClick={onDelete} className="rounded p-1 text-slate-600 hover:bg-red-50 hover:text-red-600" aria-label="Delete"><Trash2 className="size-4" /></button>
           </div>
@@ -594,4 +740,23 @@ function LockedActions({ kind }: { kind: "platform" | "bgp" }) {
       </Tooltip>
     </div>
   );
+}
+
+function ActionBadge({ action }: { action: "created" | "updated" | "deleted" }) {
+  if (action === "created")
+    return <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">Created</Badge>;
+  if (action === "updated")
+    return <Badge className="bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100">Updated</Badge>;
+  return <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100">Deleted</Badge>;
+}
+
+function formatAuditDate(iso: string): string {
+  const d = new Date(iso);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const month = months[d.getMonth()];
+  const day = d.getDate();
+  const year = d.getFullYear();
+  const hours = d.getHours().toString().padStart(2, "0");
+  const minutes = d.getMinutes().toString().padStart(2, "0");
+  return `${month} ${day}, ${year} · ${hours}:${minutes}`;
 }

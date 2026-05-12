@@ -61,6 +61,13 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
 
   const blackholeLimitHit = nexthopType === "blackhole" && blackholeCount >= 25 && mode === "add";
 
+  const destinationHasExistingRoutes = useMemo(
+    () =>
+      destination.length > 0 &&
+      allRoutes.some((r) => r.destination === destination),
+    [destination, allRoutes],
+  );
+
   const selectedNexthopCount = useMemo(() => {
     if (!nexthop || nexthopType === "blackhole") return 0;
     return allRoutes.filter(
@@ -116,11 +123,11 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
             <Banner>
               Updating the next hop will attempt to restore this route to Active. The route will return to Blackhole if the target remains unreachable.
             </Banner>
-          ) : (
+          ) : mode === "add" && destinationHasExistingRoutes && nexthopType !== "blackhole" ? (
             <Banner>
-              To route traffic across multiple paths to the same destination, create separate routes with the same destination and different nexthops (ECMP).
+              A route to {destination} already exists. You can add another route with a different nexthop to enable active-active traffic distribution (ECMP).
             </Banner>
-          )}
+          ) : null}
 
           <Field
             label="Label"

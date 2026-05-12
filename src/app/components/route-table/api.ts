@@ -88,3 +88,53 @@ export const api = {
     }
   },
 };
+
+// ---------------------------------------------------------------------------
+// Audit log (mock data for prototype)
+// ---------------------------------------------------------------------------
+
+export type AuditEntry = {
+  id: string;
+  route_id: string;
+  route_label: string;
+  action: "created" | "updated" | "deleted";
+  changed_by: string;
+  changed_at: string;
+  changes: string;
+};
+
+export function getMockAudit(route: Route): AuditEntry[] {
+  const now = new Date();
+  const hoursAgo = (h: number) =>
+    new Date(now.getTime() - h * 3600000).toISOString();
+
+  return [
+    {
+      id: `audit-1-${route.id}`,
+      route_id: route.id,
+      route_label: route.label,
+      action: "updated",
+      changed_by: "demo-user",
+      changed_at: hoursAgo(2),
+      changes: `nexthop: interface-abc123 → interface-def456`,
+    },
+    {
+      id: `audit-2-${route.id}`,
+      route_id: route.id,
+      route_label: route.label,
+      action: "updated",
+      changed_by: "demo-user",
+      changed_at: hoursAgo(24),
+      changes: `label: ${route.label}-old → ${route.label}`,
+    },
+    {
+      id: `audit-3-${route.id}`,
+      route_id: route.id,
+      route_label: route.label,
+      action: "created",
+      changed_by: "demo-user",
+      changed_at: hoursAgo(72),
+      changes: "Route created",
+    },
+  ];
+}
