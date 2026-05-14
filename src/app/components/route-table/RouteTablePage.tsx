@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { AlertCircle, DollarSign, Lock, Pencil, Search, Trash2, AlertTriangle, Plus, History, Network } from "lucide-react";
+import { AlertCircle, DollarSign, Lock, Pencil, Search, Trash2, AlertTriangle, Plus, History, Network, Info } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -41,11 +41,12 @@ export function RouteTablePage() {
   const [deleteTarget, setDeleteTarget] = useState<Route | null>(null);
   const [resetDialogOpen, setResetDialogOpen] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [conflictMap, setConflictMap] = useState<Map<string, string>>(new Map());
+  const [conflictMap, setConflictMap] = useState<Map<string, { type: "info" | "warning"; message: string }>>(new Map());
   const [auditTarget, setAuditTarget] = useState<Route | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [simulateEmpty, setSimulateEmpty] = useState(false);
   const [simulateBlackholeWarning, setSimulateBlackholeWarning] = useState(false);
+  const [overlapScenarioValue, setOverlapScenarioValue] = useState("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -173,6 +174,48 @@ export function RouteTablePage() {
     } else {
       toast.error("Reset failed. Please try again.");
     }
+  };
+
+  const handleOverlapScenario = async (value: string) => {
+    const scenarios: Record<string, Partial<import("./api").Route>> = {
+      identical: {
+        label: "demo-overlap-identical",
+        destination: "10.2.0.0/24",
+        nexthop_type: "gateway_id",
+        nexthop: "gw-nat-prod-01",
+        mode: "static",
+      },
+      contained: {
+        label: "demo-overlap-contained",
+        destination: "10.2.0.0/16",
+        nexthop_type: "interface_id",
+        nexthop: "if-7a3b9c1d",
+        mode: "static",
+      },
+      "blackhole-gateway": {
+        label: "demo-blackhole-gateway",
+        destination: "10.2.0.0/24",
+        nexthop_type: "blackhole",
+        nexthop: null,
+        mode: null,
+      },
+    };
+    const payload = scenarios[value];
+    if (!payload) return;
+    try {
+      await api.createRoute(payload);
+      await load();
+      toast.success("Demo scenario added.");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Failed to add scenario.");
+    }
+    setOverlapScenarioValue("");
+  };
+
+  const clearDemoRoutes = async () => {
+    const demoRoutes = routes.filter((r) => r.label.startsWith("demo-"));
+    await Promise.all(demoRoutes.map((r) => api.deleteRoute(r.id).catch(() => {})));
+    await load();
   };
 
   return (
@@ -526,6 +569,26 @@ export function RouteTablePage() {
             />
             <Label htmlFor="simulate-blackhole-warning" style={{ fontSize: 13 }}>Simulate blackhole limit warning</Label>
           </div>
+          <div className="flex flex-col gap-[6px]">
+            <Label style={{ fontSize: 13 }}>Add overlap scenario</Label>
+            <Select value={overlapScenarioValue} onValueChange={handleOverlapScenario}>
+              <SelectTrigger style={{ fontSize: 13 }}>
+                <SelectValue placeholder="Choose scenario…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="identical">Identical prefix</SelectItem>
+                <SelectItem value="contained">Contained prefix</SelectItem>
+                <SelectItem value="blackhole-gateway">Blackhole + gateway (identical)</SelectItem>
+              </SelectContent>
+            </Select>
+            <button
+              onClick={clearDemoRoutes}
+              className="text-slate-400 hover:text-slate-600 text-left"
+              style={{ fontSize: 12 }}
+            >
+              Clear demo routes
+            </button>
+          </div>
         </div>
       </div>
     </TooltipProvider>
@@ -602,7 +665,7 @@ function RouteRow({
 }: {
   route: Route;
   isEcmp: boolean;
-  conflictMap: Map<string, string>;
+  conflictMap: Map<string, { type: "info" | "warning"; message: string }>;
   onEdit: () => void;
   onDelete: () => void;
   onAudit: () => void;
@@ -617,9 +680,13 @@ function RouteRow({
           {conflict && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
+                {conflict.type === "warning" ? (
+                  <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
+                ) : (
+                  <Info className="size-3.5 text-blue-500 shrink-0" />
+                )}
               </TooltipTrigger>
-              <TooltipContent className="max-w-[300px]">{conflict}</TooltipContent>
+              <TooltipContent className="max-w-[300px]">{conflict.message}</TooltipContent>
             </Tooltip>
           )}
         </span>

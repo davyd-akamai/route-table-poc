@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Info } from "lucide-react";
 import { Route, NexthopOption } from "./api";
-import { validateLabel, validateDestination } from "./validation";
+import { validateLabel, validateDestination, cidrOverlaps } from "./validation";
 
 type Mode = "add" | "edit";
 
@@ -60,6 +60,31 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   );
 
   const blackholeLimitHit = nexthopType === "blackhole" && blackholeCount >= 25 && mode === "add";
+
+  const ecmpNotice = useMemo(() => {
+    if (mode !== "add" || !destination || nexthopType === "blackhole") return null;
+    const hasEcmp = allRoutes.some(
+      (r) => r.destination === destination && r.nexthop_type === nexthopType
+    );
+    return hasEcmp ? destination : null;
+  }, [mode, destination, nexthopType, allRoutes]);
+
+  const overlapRoutes = useMemo(() => {
+    if (!destination || mode === "edit") return null;
+    const isValidCidr =
+      /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(destination) ||
+      /^[0-9a-fA-F:]+\/\d{1,3}$/.test(destination);
+    if (!isValidCidr) return null;
+    if (destination === "0.0.0.0/0" || destination === "::/0") return null;
+
+    const overlapping = allRoutes.filter((r) => {
+      if (!r.is_editable) return false;
+      if (r.destination === "0.0.0.0/0" || r.destination === "::/0") return false;
+      return cidrOverlaps(destination, r.destination);
+    });
+
+    return overlapping.length > 0 ? overlapping : null;
+  }, [destination, allRoutes, mode]);
 
   const destinationHasExistingRoutes = useMemo(
     () =>
@@ -119,15 +144,11 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto px-[25px] py-[20px] flex flex-col gap-[20px]">
-          {isBlackholeEdit ? (
+          {isBlackholeEdit && (
             <Banner>
               Updating the next hop will attempt to restore this route to Active. The route will return to Blackhole if the target remains unreachable.
             </Banner>
-          ) : mode === "add" && destinationHasExistingRoutes && nexthopType !== "blackhole" ? (
-            <Banner>
-              A route to {destination} already exists. You can add another route with a different nexthop to enable active-active traffic distribution (ECMP).
-            </Banner>
-          ) : null}
+          )}
 
           <Field
             label="Label"
@@ -150,6 +171,30 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
               style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
             />
           </Field>
+          {(ecmpNotice || overlapRoutes) && (
+            <div className="flex flex-col gap-[8px]">
+              {ecmpNotice && (
+                <div className="flex gap-[10px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2" style={{ fontSize: 13 }}>
+                  <Info className="size-4 text-blue-600 shrink-0 mt-0.5" />
+                  <span className="text-blue-900">
+                    A route to {destination} already exists with the same nexthop type. Adding this route will enable active-active traffic distribution (ECMP).
+                  </span>
+                </div>
+              )}
+              {overlapRoutes && (() => {
+                const names = overlapRoutes.map(r => `${r.label} · ${r.destination}`).join(", ");
+                const count = overlapRoutes.length;
+                return (
+                  <div className="flex gap-[10px] rounded-md border border-blue-200 bg-blue-50 px-3 py-2" style={{ fontSize: 13 }}>
+                    <Info className="size-4 text-blue-600 shrink-0 mt-0.5" />
+                    <span className="text-blue-900">
+                      This destination overlaps with {count} existing {count === 1 ? "route" : "routes"} ({names}). This may be intentional but worth verifying.
+                    </span>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="flex flex-col gap-[10px]">
             <Label>Nexthop Type</Label>
