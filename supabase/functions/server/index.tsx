@@ -205,6 +205,7 @@ app.put("/make-server-22ead257/routes/:id", async (c) => {
     const updated = {
       ...existing,
       label: body.label ?? existing.label,
+      destination: body.destination ?? existing.destination,
       nexthop_type: body.nexthop_type ?? existing.nexthop_type,
       nexthop: body.nexthop ?? null,
       mode: (body.nexthop_type ?? existing.nexthop_type) === "blackhole" ? null : "static",
