@@ -40,7 +40,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   }, [open, initial]);
 
   const labelError = label ? validateLabel(label) : null;
-  const destinationError = mode === "add" && destination ? validateDestination(destination) : null;
+  const destinationError = destination ? validateDestination(destination) : null;
 
   const labelUniqueError = useMemo(() => {
     if (!label) return null;
@@ -62,7 +62,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   const blackholeLimitHit = nexthopType === "blackhole" && blackholeCount >= 25 && mode === "add";
 
   const ecmpNotice = useMemo(() => {
-    if (mode !== "add" || !destination || nexthopType === "blackhole") return null;
+    if (!destination || nexthopType === "blackhole") return null;
     const hasEcmp = allRoutes.some(
       (r) => r.destination === destination && r.nexthop_type === nexthopType
     );
@@ -70,7 +70,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   }, [mode, destination, nexthopType, allRoutes]);
 
   const overlapRoutes = useMemo(() => {
-    if (!destination || mode === "edit") return null;
+    if (!destination) return null;
     const isValidCidr =
       /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(destination) ||
       /^[0-9a-fA-F:]+\/\d{1,3}$/.test(destination);
@@ -110,7 +110,7 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
   const formValid =
     !validateLabel(label) &&
     !labelUniqueError &&
-    (mode === "edit" || !validateDestination(destination)) &&
+    !validateDestination(destination) &&
     (nexthopType === "blackhole" || !!nexthop) &&
     !blackholeLimitHit &&
     !ifGwLimitHit;
@@ -167,7 +167,6 @@ export function RouteDrawer({ open, mode, initial, nexthopOptions, blackholeCoun
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
               placeholder="e.g. 10.2.0.0/24 or 2001:db8::/32"
-              disabled={mode === "edit"}
               style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
             />
           </Field>
